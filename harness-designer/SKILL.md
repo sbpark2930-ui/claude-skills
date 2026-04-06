@@ -1,17 +1,26 @@
 ---
 name: harness-designer
-description: 프로젝트를 스캔하고 settings.json 전체를 구조화된 Q&A, 리스크 기반 승인, deepMerge 정렬 적용, 정적 검증으로 설계하는 통합 하네스 설계 스킬
-argument-hint: "[--global] [--interactive] [--scope hooks|permissions|env|model|plugins] [--preset <type>] [--check] [--test-hooks]"
+description: 프로젝트를 8개 영역으로 자동 스캔하고, settings.json + CLAUDE.md + 에이전트 팀 + 모델 라우팅 + 보안 파이프라인을 구조화된 Q&A, 리스크 기반 승인, deepMerge 정렬 적용, 정적 검증으로 설계하는 통합 하네스 설계 스킬
+argument-hint: "[--global] [--interactive] [--scope hooks|permissions|env|model|plugins|teams|security|claudemd] [--preset <type>] [--check] [--test-hooks] [--full]"
 ---
 
 # Harness Designer
 
 <Purpose>
-프로젝트 코드베이스를 4개 영역으로 자동 스캔하고, settings.json(hooks, permissions, env, model, plugins)에 대한 최적 설정을 진단/제안/승인/적용/검증하는 컨설팅형 스킬.
+프로젝트 코드베이스를 8개 영역으로 자동 스캔하고, settings.json + CLAUDE.md + 에이전트 팀 + 모델 라우팅 + 보안 파이프라인에 대한 최적 설정을 진단/제안/승인/적용/검증하는 컨설팅형 스킬.
 
-- **update-config과의 차이**: update-config은 단일 키 변경 도구. harness-designer는 전체 설정 설계.
-- **omc-setup과의 차이**: omc-setup은 statusLine/model 등 초기 글로벌 설정 관리. harness-designer는 프로젝트별 hooks/permissions/env 중심.
-- **출력물**: 적용된 settings + 백업 파일 + 검증 리포트
+- **update-config과의 차이**: update-config은 단일 키 변경 도구. harness-designer는 전체 하네스 아키텍처 설계.
+- **omc-setup과의 차이**: omc-setup은 statusLine/model 등 초기 글로벌 설정 관리. harness-designer는 프로젝트별 전체 하네스 중심.
+- **출력물**: 적용된 settings + CLAUDE.md 최적화 + 에이전트 정의 + 보안 훅 + 모델 라우팅 맵 + 백업 + 검증 리포트
+
+**v2 확장 영역** (기존 settings.json 중심에서 전체 하네스 아키텍처로 확장):
+- Agent Teams + Worktree 설정 자동화
+- 카테고리 기반 모델 라우팅 설계
+- 테스트 변조 방지 훅
+- 보안 파이프라인 (AgentShield 패턴)
+- 컨텍스트 관리 전략
+- CLAUDE.md 품질 분석
+- 안티패턴 감지
 </Purpose>
 
 <Use_When>
@@ -81,6 +90,7 @@ Claude Code의 settings.json은 hooks, permissions, env, model, plugins 등 여�
   - 사용 가능: `nextjs`, `python-fastapi`, `rust-tauri`, `monorepo`, `minimal`
 - `--check`: Drift 감지 모드 (스캔만 실행, 변경 적용 없음)
 - `--test-hooks`: Phase 6에서 hook 안전 테스트 활성화
+- `--full`: 전체 하네스 아키텍처 설계 모드 (settings + CLAUDE.md + 에이전트 팀 + 모델 라우팅 + 보안)
 
 기존 세션 확인: `state_read(mode="harness-designer")`. 기존 세션이 있으면 재개 여부를 AskUserQuestion으로 확인.
 
@@ -160,7 +170,90 @@ Drift 감지 후 종료 (변경 적용 없음). "수정하시겠습니까?" 선�
 - **감지 항목**: CI/CD 설정, pre-commit 패턴, 테스트/린트/빌드 명령어, 포맷터
 - **출력**: 추천 hooks (PreToolUse: 위험 명령어 차단, PostToolUse: 자동 포맷/린트)
 
-### Step 1-6: 스캔 요약 + 갭 감지
+### Step 1-6: Scan Area 5 -- 에이전트 팀 구조 (`--full` 또는 `--scope teams`)
+
+멀티 에이전트 팀 구성이 필요한지 감지한다:
+
+- **감지 조건**: 모노레포 구조, 독립 도메인 3개+, `packages/` 또는 `apps/` 디렉토리 존재
+- **기존 에이전트 정의**: `.claude/agents/*.md` 스캔
+- **출력 추천**:
+  - `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` env 설정
+  - worktree `sparsePaths` 설정 (모노레포 시)
+  - `.worktreeinclude` 파일 생성 (`.env`, `.env.local` 자동 복사)
+  - CLAUDE.md에 도메인 병렬 분할 규칙 삽입:
+    ```markdown
+    ## 서브에이전트 라우팅 규칙
+    병렬 디스패치 조건: 3개+ 독립 태스크, 파일 경계 명확, 공유 상태 없음
+    순차 디스패치 조건: 태스크 간 의존성, 공유 파일, 범위 불명확
+    ```
+  - WIP 리밋 권장: 3-5개 에이전트
+
+### Step 1-7: Scan Area 6 -- CLAUDE.md 품질 분석 (`--full` 또는 `--scope claudemd`)
+
+기존 CLAUDE.md 파일을 읽고 품질을 분석한다:
+
+- **토큰 수 추정**: 파일 크기 기반 (1토큰 ≈ 4바이트)
+- **자명한 관행 감지**: "깨끗한 코드를 작성하라", "주석을 잘 달아라" 같은 불필요 지시
+- **중복 감지**: settings.json의 permissions와 CLAUDE.md 지시가 겹치는 경우
+- **Progressive Disclosure 위반**: CLAUDE.md 본문이 5,000+ 토큰이면 하위 디렉토리 분리 또는 `@import` 권장
+- **누락 감지**: 빌드/테스트 명령어, 아키텍처 결정사항이 없으면 추가 제안
+
+```
+CLAUDE.md 품질 분석:
+
+| 항목 | 상태 | 권고 |
+|------|------|------|
+| 총 토큰 | ~3,200 | ✓ 적정 |
+| 자명한 관행 | 2건 감지 | 삭제 권장: "코드는 읽기 쉽게" (L12), "변수명은 명확하게" (L25) |
+| settings 중복 | 1건 | CLAUDE.md L38 "rm -rf 금지" ↔ permissions.deny 중복 |
+| 빌드 명령어 | 누락 | 추가 권장: "npm run build", "npm test" |
+| 아키텍처 | 존재 | ✓ |
+| Progressive Disclosure | ✓ | 현재 크기 적정 |
+```
+
+### Step 1-8: Scan Area 7 -- 보안 파이프라인 (`--full` 또는 `--scope security`)
+
+ECC AgentShield 패턴 기반 보안 훅을 스캔/추천한다:
+
+- **시크릿 탐지 훅**: `sk-`, `ghp_`, `AKIA`, `-----BEGIN` 패턴을 PreToolUse에서 차단
+- **커밋 보호 훅**: `--no-verify` 커밋 차단
+- **설정 파일 보호**: `.eslintrc`, `.prettierrc` 직접 수정 차단 (실제 코드 수정 강제)
+- **프로덕션 보호**: `Write(production.config.*)`, `Write(*.prod.*)` deny 규칙
+- **테스트 변조 방지 훅** (Chachamaru 패턴): PostToolUse에서 테스트 약화 패턴 감지
+  - `toBe` → `toBeTruthy` 변환
+  - 타임아웃 인플레이션 (기존값 대비 2배+ 증가)
+  - catch-all 어설션 (`expect(true).toBe(true)`)
+  - `@pytest.mark.skip` 추가
+  - 테스트 파일 삭제
+  - 감지 시 exit code 2 반환 → "테스트를 조작하지 말고 실제 코드를 수정하라" 피드백
+
+### Step 1-9: Scan Area 8 -- 안티패턴 감지
+
+현재 설정에서 알려진 안티패턴을 검출한다:
+
+| 안티패턴 | 감지 방법 | 위험도 |
+|----------|-----------|--------|
+| 모든 에이전트에 모든 도구 허용 | permissions.allow에 `*` 존재 | HIGH |
+| 동일 파일 다중 에이전트 편집 가능 | worktree 미설정 + 병렬 에이전트 존재 | HIGH |
+| 감독 없는 무제한 실행 | max_turns/max_budget 미설정 | MEDIUM |
+| 컨텍스트 관리 미설정 | `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` 미설정 | LOW |
+| AI 생성 AGENTS.md | `.claude/agents/`에 AI 생성 패턴 감지 | MEDIUM |
+| 과도한 CLAUDE.md | 5,000+ 토큰 | MEDIUM |
+
+```
+안티패턴 감지 결과:
+
+[HIGH] 과잉 권한: permissions.allow에 와일드카드 감지
+  → 최소 권한 원칙 적용 권장
+
+[MEDIUM] 컨텍스트 미관리: CLAUDE_AUTOCOMPACT_PCT_OVERRIDE 미설정
+  → 50% 권장 (대규모 작업 시 조기 컴팩션)
+
+[LOW] worktree 미구성: 병렬 에이전트 사용 시 파일 충돌 위험
+  → .worktreeinclude 설정 권장
+```
+
+### Step 1-10: 스캔 요약 + 갭 감지
 
 스캔 결과를 테이블로 요약한다:
 
@@ -173,6 +266,10 @@ Harness Designer -- 프로젝트 스캔 결과
 | 보안 패턴 | .env 파일 2개 발견 | 2 deny rules | - |
 | 기존 설정 | permissions 42개 존재 | 3 신규 추가 | model 미설정 |
 | 워크플로우 | eslint + cargo clippy 감지 | 2 hooks | CI 설정 없음 |
+| 에이전트 팀 | 모노레포 감지, 3 도메인 | Teams 활성화 + worktree | - |
+| CLAUDE.md | 3,200 토큰, 자명 관행 2건 | 삭제 2건, 추가 3건 | 빌드 명령 누락 |
+| 보안 파이프라인 | 시크릿 탐지 훅 없음 | 5 security hooks | - |
+| 안티패턴 | 과잉 권한 1건, 컨텍스트 미관리 | 3 수정 권고 | - |
 ```
 
 **갭 감지**: 스캔으로 파악할 수 없는 항목이 있으면 Phase 2로 이동. 모든 정보가 충분하면 Phase 2를 건너뛰고 Phase 3로.
@@ -648,6 +745,94 @@ permissions.allow: 기존 42개 + 신규 5개 = 47개 (union)
 | 보안 | `**/.env*`, `**/*.pem` | `API_KEY`, `SECRET`, `TOKEN` |
 | 설정 | `.claude/settings*.json` | - |
 | 워크플로우 | `.github/workflows/*`, `Makefile` | `pre-commit`, `eslint`, `prettier` |
+| 에이전트 | `.claude/agents/*.md` | `model:`, `tools:`, `isolation:` |
+| CLAUDE.md | `**/CLAUDE.md`, `**/CLAUDE.local.md` | - |
+| 시크릿 패턴 | 소스 코드 내 | `sk-`, `ghp_`, `AKIA`, `-----BEGIN` |
+| 테스트 변조 | `**/*.test.*`, `**/test_*` | `toBeTruthy`, `skip`, `timeout` |
+
+## 카테고리 기반 모델 라우팅 맵 (OmO 패턴)
+
+`--full` 모드에서 에이전트 정의의 `model` 필드를 작업 성격 기반으로 자동 추천한다:
+
+```json
+{
+  "modelRouting": {
+    "quick-lookup": { "model": "haiku", "use": "docs-lookup, 파일 탐색, 간단한 질의" },
+    "standard-dev": { "model": "sonnet", "use": "코드 생성, 리팩토링, 테스트 작성" },
+    "architecture": { "model": "opus", "use": "아키텍처 설계, 복잡한 분석" },
+    "security-review": { "model": "opus", "use": "보안 감사, 취약점 분석" },
+    "code-generation": { "model": "sonnet", "use": "반복적 코드 생성" }
+  }
+}
+```
+
+에이전트 frontmatter의 model 필드를 카테고리 맵 기반으로 추천:
+- `docs-lookup.md` → `model: haiku` (비용 절약)
+- `security-reviewer.md` → `model: opus` (깊은 추론)
+- `code-generator.md` → `model: sonnet` (균형)
+
+## 컨텍스트 관리 전략 설정
+
+프로젝트 크기와 작업 패턴에 따라 컨텍스트 관리를 추천한다:
+
+| 프로젝트 규모 | AUTOCOMPACT_PCT | MAX_OUTPUT_TOKENS | Strategic Compaction |
+|--------------|-----------------|-------------------|---------------------|
+| 소규모 (< 50 파일) | 70 (기본) | 8192 | 불필요 |
+| 중규모 (50-200 파일) | 50 | 16384 | 마일스톤 후 /compact 권장 |
+| 대규모 (200+ 파일) | 40 | 16384 | 필수 — CLAUDE.md에 전략 삽입 |
+
+대규모 프로젝트 CLAUDE.md 삽입 내용:
+```markdown
+## 컨텍스트 관리
+- 컨텍스트 50% 초과 시 /compact 실행
+- 리서치 → 구현 전환 시 반드시 /compact
+- 마일스톤 완료 후 /compact
+- 에이전트 팀 워크 시작 전 /compact
+```
+
+## 테스트 변조 방지 훅 레퍼런스 (Chachamaru 패턴)
+
+PostToolUse 훅으로 다음 12개 테스트 약화 패턴을 감지한다:
+
+| # | 패턴 | Grep 탐지 |
+|---|------|-----------|
+| 1 | `toBe` → `toBeTruthy` 변환 | `toBeTruthy` 신규 등장 |
+| 2 | 타임아웃 인플레이션 | `timeout:` 값 2배+ 증가 |
+| 3 | catch-all 어설션 | `expect(true).toBe(true)` |
+| 4 | Python skip 데코레이터 | `@pytest.mark.skip` 신규 |
+| 5 | 테스트 파일 삭제 | `test_*.py` 또는 `*.test.*` 삭제 감지 |
+| 6 | 빈 테스트 함수 | `test_` 함수 body가 `pass` 만 |
+| 7 | describe.skip / it.skip | `.skip` 신규 등장 |
+| 8 | 예외 무시 catch | `except:` 또는 `catch(e) {}` 빈 블록 |
+| 9 | 어설션 주석처리 | `// expect` 또는 `# assert` |
+| 10 | 테스트 데이터 하드코딩 | 기존 동적 데이터 → 하드코딩 변환 |
+| 11 | mock 과용 | 실제 구현을 mock으로 대체 |
+| 12 | 에러 메시지 변경 | 테스트가 검증하는 에러 메시지 변경 |
+
+감지 시 exit code 2 반환 → 피드백: "테스트를 약화시키지 말고 실제 코드를 수정하세요."
+
+## 보안 훅 프리셋 (AgentShield 패턴)
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash(git commit*--no-verify*)",
+        "hooks": [{ "type": "command", "command": "echo 'ERROR: --no-verify 금지' && exit 2" }]
+      },
+      {
+        "matcher": "Write(*.env*)",
+        "hooks": [{ "type": "command", "command": "echo 'ERROR: .env 직접 수정 금지' && exit 2" }]
+      },
+      {
+        "matcher": "Edit(.eslintrc*)",
+        "hooks": [{ "type": "command", "command": "echo 'ERROR: 린트 설정 대신 실제 코드를 수정하세요' && exit 2" }]
+      }
+    ]
+  }
+}
+```
 
 </Advanced>
 
